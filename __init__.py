@@ -268,6 +268,12 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		default=True
 	)
 
+	export_euler: BoolProperty(
+		name="Export Keys As Euler",
+		description="Export animation keys as euler, instead of quaternion",
+		default=False
+	)
+
 	zero_root_transforms: BoolProperty(
 		name="Reset Root Transforms",
 		description="If enabled, root-level objects have default transform matrices",
@@ -316,6 +322,7 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		
 		anim_layout = layout.box()
 		anim_layout.prop(self, "export_animations", icon="ANIM_DATA")
+		anim_layout.prop(self, "export_euler", icon="ANIM_DATA")
 		sub = anim_layout.column()
 		sub.prop(self, "export_envelopes", icon="GROUP_VERTEX")
 		sub.enabled = self.export_mesh

@@ -358,8 +358,11 @@ class Save:
 		
 		if self.opt["export_animations"]:
 			if armature.animation_data and armature.animation_data.action:
-				bz2frame.animation_keys += list(self.bone_animation_to_bz2anim(bone, posebone, armature))
-
+				if self.opt["export_euler"]:
+					bz2frame.animation_keys += list(self.bone_animation_to_bz2anim_euler(bone, posebone, armature))
+				else:
+					bz2frame.animation_keys += list(self.bone_animation_to_bz2anim(bone, posebone, armature))
+		
 		return bz2frame
 	
 	def bone_animation_to_bz2anim(self, bone, posebone, armature):
@@ -393,6 +396,40 @@ class Save:
 				
 				elif bz2_keyframe_type == 0:
 					bz2anim.add_key(pos, tuple(matrix.transposed().to_quaternion()))
+
+			yield bz2anim
+	
+	def bone_animation_to_bz2anim_euler(self, bone, posebone, armature):
+		# fcurves will be in the armature object, not in the bone object.
+		keyframe_filter = ["pose.bones[\"%s\"].%s" % (bone.name, path) for path in KEYFRAME_PATHS]
+		filtered_keyframe_points = get_keyframes_filtered(armature.animation_data.action, keyframe_filter)
+		
+		# Convert the filtered keyframe points to bz2 keyframe animations
+		location_path_name = "pose.bones[\"%s\"].location" % bone.name
+		for key_type, points in filtered_keyframe_points.items():
+			bz2_keyframe_type = 2 if key_type == location_path_name else 3
+			
+			if not points:
+				continue
+			
+			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
+			
+			for point in points:
+				#~ bpy.context.scene.frame_set(point.co[0])
+				pos = int(point.co[0])
+				bpy.context.scene.frame_set(pos)
+				
+				if posebone.parent:
+					matrix = Matrix(posebone.parent.matrix).inverted()
+					matrix @= Matrix(posebone.matrix)
+				else:
+					matrix = Matrix(posebone.matrix)
+				
+				if bz2_keyframe_type == 2:
+					bz2anim.add_key(pos, tuple(matrix.to_translation()))
+				
+				elif bz2_keyframe_type == 3:
+					bz2anim.add_key(pos, tuple(matrix.transposed().to_euler()))
 
 			yield bz2anim
 	
