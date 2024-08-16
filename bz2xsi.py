@@ -964,7 +964,7 @@ class Writer:
 		if not keys: return
 		
 		vector_size = len(keys[0][1])
-		format_string = "%d;%d;" + ";".join(["%f"] * vector_size) + ";;%s"
+		format_string = "%d; %d; " + ", ".join(["%f"] * vector_size) + ";;%s"
 		
 		for keyframe, vector in keys[0:-1]:
 			self.write(t, format_string % (keyframe, vector_size, *vector, ","))
