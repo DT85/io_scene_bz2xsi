@@ -240,7 +240,7 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 
 	export_mesh_uvmap: BoolProperty(
 		name="UV Map",
-		description="Export mesh uv map coordinates",
+		description="Export mesh UV map coordinates",
 		default=True
 	)
 
@@ -258,36 +258,42 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 
 	export_envelopes: BoolProperty(
 		name="Bone Envelopes",
-		description="Export envelopes for bones",
+		description="Export skin envelopes for bones",
 		default=True
 	)
 
+	export_rot90x: BoolProperty(
+		name="Rotate To XSI Coords",
+		description="Objects & bones are rotated & exported to XSI coordinates (X axis +90)",
+		default=True
+	)
+	
 	export_animations: BoolProperty(
 		name="Animations",
 		description="Export rotation & translation animations",
 		default=True
 	)
-
+	
 	export_euler: BoolProperty(
-		name="Export Keys As Euler",
-		description="Export animation keys as euler, instead of quaternion",
-		default=False
+		name="Euler Animation Keys",
+		description="Export animation keys as euler instead of quaternion",
+		default=True
 	)
-
+	
 	zero_root_transforms: BoolProperty(
 		name="Reset Root Transforms",
-		description="If enabled, root-level objects have default transform matrices",
+		description="Root-level objects have default transform matrices",
 		default=True
 	)
 
 	generate_empty_mesh: BoolProperty(
-		name="Generate Empty Mesh",
+		name="Generate Empty Meshes",
 		description="Create a pointer-like mesh for empty objects to visualize their direction (e.g. for hardpoints)",
 		default=False
 	)
 
 	generate_bone_mesh: BoolProperty(
-		name="Generate Bone Mesh",
+		name="Generate Meshes For Bones",
 		description="Create meshes for bones to visualize bones for debugging purposes",
 		default=False
 	)
@@ -316,24 +322,33 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		sub = mesh_layout.column()
 		sub.prop(self, "export_mesh_vertcolor", icon="GROUP_VCOL")
 		sub.enabled = self.export_mesh
-		mesh_layout.separator()
 		
-		mesh_layout.prop(self, "generate_empty_mesh", icon="EMPTY_DATA")
-		
-		anim_layout = layout.box()
-		anim_layout.prop(self, "export_animations", icon="ANIM_DATA")
-		anim_layout.prop(self, "export_euler", icon="ANIM_DATA")
-		sub = anim_layout.column()
+		sub = mesh_layout.column()
 		sub.prop(self, "export_envelopes", icon="GROUP_VERTEX")
 		sub.enabled = self.export_mesh
+		mesh_layout.separator()
+		
+		sub = mesh_layout.column()
+		sub.prop(self, "generate_empty_mesh", icon="EMPTY_DATA")
+		sub.enabled = self.export_mesh
+		layout.separator()
+        
+		anim_layout = layout.box()
+		anim_layout.prop(self, "export_animations", icon="ARMATURE_DATA")
+		
+		subanim = anim_layout.column()
+		subanim.prop(self, "export_euler", icon="KEYFRAME")
+		subanim.enabled = self.export_animations
 		anim_layout.separator()
 		
-		sub = anim_layout.column()
-		sub.prop(self, "generate_bone_mesh", icon="GROUP_BONE")
+		subanim = anim_layout.column()
+		subanim.prop(self, "generate_bone_mesh", icon="GROUP_BONE")
+		subanim.enabled = self.export_animations
+		layout.separator()
 		
-		layout.separator()
-		layout.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
-		layout.separator()
+		trans_layout = layout.box()
+		trans_layout.prop(self, "export_rot90x", icon="ORIENTATION_GLOBAL")
+		trans_layout.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
 	
 	def execute(self, context):
 		from . import xsi_blender_exporter

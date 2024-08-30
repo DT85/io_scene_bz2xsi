@@ -1,5 +1,6 @@
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
+from math import radians, degrees
 
 from . import bz2xsi
 
@@ -247,10 +248,27 @@ class Save:
 			mat["shading_type"],
 			mat["texture"]
 		)
-	
+
 	def matrix_to_bz2matrix(self, local_matrix):
 		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix.transposed())))
 	
+	def matrix_to_xsimatrix(self, local_matrix):
+		# create the X rotation matrix
+		mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
+		
+        # create the X inverse rotation matrix from the X rotation matrix
+		mat_rot90x_inv = mat_rot90x.inverted()
+
+		# transpose these matrices
+		mat_rot90x.transpose()
+		mat_rot90x_inv.transpose()
+		mat_blender = local_matrix.transposed()
+        
+		# perform coordinate system transformation
+		local_matrix_out = mat_rot90x @ mat_blender @ mat_rot90x_inv
+		
+		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix_out)))
+
 	def object_to_bz2frame(self, obj, is_root_level=False):
 		bz2frame = bz2xsi.Frame(obj.name)
 		bz2frame.mesh = None
@@ -259,7 +277,10 @@ class Save:
 		if is_root_level and self.opt["zero_root_transforms"]:
 			bz2frame.transform = bz2xsi.Matrix()
 		else:
-			bz2frame.transform = self.matrix_to_bz2matrix(obj.matrix_local)
+			if self.opt["export_rot90x"]:
+				bz2frame.transform = self.matrix_to_xsimatrix(obj.matrix_local)
+			else:
+				bz2frame.transform = self.matrix_to_bz2matrix(obj.matrix_local)
 		
 		if is_skinned:
 			bz2frame.pose = bz2frame.transform
@@ -340,13 +361,17 @@ class Save:
 		self.bone_name_to_bz2frame[bone.name] = bz2frame
 		
 		matrix = Matrix()
-
+		
 		if bone.parent:
 			matrix @= Matrix(bone.parent.matrix_local).inverted()
 		
 		matrix @= Matrix(bone.matrix_local)
-
-		bz2frame.transform = self.matrix_to_bz2matrix(matrix)
+		
+		if self.opt["export_rot90x"]:
+			bz2frame.transform = self.matrix_to_xsimatrix(matrix)
+		else:
+			bz2frame.transform = self.matrix_to_bz2matrix(matrix)
+		
 		bz2frame.pose = bz2frame.transform
 		
 		for child_bone, child_posebone in zip(bone.children, posebone.children):
@@ -358,10 +383,7 @@ class Save:
 		
 		if self.opt["export_animations"]:
 			if armature.animation_data and armature.animation_data.action:
-				if self.opt["export_euler"]:
-					bz2frame.animation_keys += list(self.bone_animation_to_bz2anim_euler(bone, posebone, armature))
-				else:
-					bz2frame.animation_keys += list(self.bone_animation_to_bz2anim(bone, posebone, armature))
+				bz2frame.animation_keys += list(self.bone_animation_to_bz2anim(bone, posebone, armature))
 		
 		return bz2frame
 	
@@ -373,16 +395,20 @@ class Save:
 		# Convert the filtered keyframe points to bz2 keyframe animations
 		location_path_name = "pose.bones[\"%s\"].location" % bone.name
 		for key_type, points in filtered_keyframe_points.items():
-			bz2_keyframe_type = 2 if key_type == location_path_name else 0
+			if self.opt["export_euler"]:
+				bz2_keyframe_type = 2 if key_type == location_path_name else 3
+			else:
+				bz2_keyframe_type = 2 if key_type == location_path_name else 0
 			
 			if not points:
 				continue
 			
 			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
 			
-			for point in points:
+			for pos in range(bpy.context.scene.frame_start,bpy.context.scene.frame_end + 1):
+			#for point in points:
 				#~ bpy.context.scene.frame_set(point.co[0])
-				pos = int(point.co[0])
+				#pos = int(point.co[0])
 				bpy.context.scene.frame_set(pos)
 				
 				if posebone.parent:
@@ -391,45 +417,30 @@ class Save:
 				else:
 					matrix = Matrix(posebone.matrix)
 				
-				if bz2_keyframe_type == 2:
-					bz2anim.add_key(pos, tuple(matrix.to_translation()))
+				# because we've rotated the local matrix in 'matrix_to_bz2matrix', 
+				# we must also rotate the pose matrix here.
 				
-				elif bz2_keyframe_type == 0:
+				# create the X rotation matrix
+				mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
+				
+				# create the X inverse rotation matrix from the X rotation matrix
+				mat_rot90x_inv = mat_rot90x.inverted()
+				
+                # perform coordinate system transformation
+				matrix = mat_rot90x_inv @ matrix @ mat_rot90x
+        
+				if bz2_keyframe_type == 0:
 					bz2anim.add_key(pos, tuple(matrix.transposed().to_quaternion()))
-
-			yield bz2anim
-	
-	def bone_animation_to_bz2anim_euler(self, bone, posebone, armature):
-		# fcurves will be in the armature object, not in the bone object.
-		keyframe_filter = ["pose.bones[\"%s\"].%s" % (bone.name, path) for path in KEYFRAME_PATHS]
-		filtered_keyframe_points = get_keyframes_filtered(armature.animation_data.action, keyframe_filter)
-		
-		# Convert the filtered keyframe points to bz2 keyframe animations
-		location_path_name = "pose.bones[\"%s\"].location" % bone.name
-		for key_type, points in filtered_keyframe_points.items():
-			bz2_keyframe_type = 2 if key_type == location_path_name else 3
-			
-			if not points:
-				continue
-			
-			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
-			
-			for point in points:
-				#~ bpy.context.scene.frame_set(point.co[0])
-				pos = int(point.co[0])
-				bpy.context.scene.frame_set(pos)
 				
-				if posebone.parent:
-					matrix = Matrix(posebone.parent.matrix).inverted()
-					matrix @= Matrix(posebone.matrix)
-				else:
-					matrix = Matrix(posebone.matrix)
-				
-				if bz2_keyframe_type == 2:
+				elif bz2_keyframe_type == 2:
 					bz2anim.add_key(pos, tuple(matrix.to_translation()))
 				
 				elif bz2_keyframe_type == 3:
-					bz2anim.add_key(pos, tuple(matrix.transposed().to_euler()))
+                    # matrix euler in degrees
+					mat_euler_to_degrees = matrix.to_euler()
+					mat_euler_to_degrees = [degrees(n) for n in mat_euler_to_degrees]
+					
+					bz2anim.add_key(pos, tuple(mat_euler_to_degrees))
 
 			yield bz2anim
 	
