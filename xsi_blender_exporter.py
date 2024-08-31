@@ -297,7 +297,11 @@ class Save:
 			if self.opt["export_rot90x"]:
 				bz2frame.transform = self.matrix_x90_rot(obj.matrix_local)
 			elif self.opt["export_rot90z"]:
-				bz2frame.transform = self.matrix_z90_rot(obj.matrix_local)
+				# zero out the matrix for the skeleton_root object
+				if obj.name == "skeleton_root":
+					bz2frame.transform = bz2xsi.Matrix()
+				else:
+					bz2frame.transform = self.matrix_z90_rot(obj.matrix_local)
 			else:
 				bz2frame.transform = self.matrix_to_bz2matrix(obj.matrix_local)
 		
@@ -389,11 +393,7 @@ class Save:
 		if self.opt["export_rot90x"]:
 			bz2frame.transform = self.matrix_x90_rot(matrix)
 		elif self.opt["export_rot90z"]:
-			# zero out the matrix for the skeleton_root bone
-			if bone.name == "skeleton_root":
-				bz2frame.transform = bz2xsi.Matrix()
-			else:
-				bz2frame.transform = self.matrix_z90_rot(matrix)
+			bz2frame.transform = self.matrix_z90_rot(matrix)
 		else:
 			bz2frame.transform = self.matrix_to_bz2matrix(matrix)
 		
