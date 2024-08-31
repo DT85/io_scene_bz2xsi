@@ -263,9 +263,15 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 	)
 
 	export_rot90x: BoolProperty(
-		name="Rotate To XSI Coords",
-		description="Objects & bones are rotated & exported to XSI coordinates (X axis +90)",
-		default=True
+		name="Rotate Matrices (X Axis)",
+		description="Rotate object & bone matrices with a X axis +90 rotation",
+		default=False
+	)
+	
+	export_rot90z: BoolProperty(
+		name="Rotate Matrices (Z Axis)",
+		description="Rotate object & bone matrices with a Z axis +90 rotation",
+		default=False
 	)
 	
 	export_animations: BoolProperty(
@@ -336,19 +342,27 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		anim_layout = layout.box()
 		anim_layout.prop(self, "export_animations", icon="ARMATURE_DATA")
 		
-		subanim = anim_layout.column()
-		subanim.prop(self, "export_euler", icon="KEYFRAME")
-		subanim.enabled = self.export_animations
+		anim_sub = anim_layout.column()
+		anim_sub.prop(self, "export_euler", icon="KEYFRAME")
+		anim_sub.enabled = self.export_animations
 		anim_layout.separator()
 		
-		subanim = anim_layout.column()
-		subanim.prop(self, "generate_bone_mesh", icon="GROUP_BONE")
-		subanim.enabled = self.export_animations
+		anim_sub = anim_layout.column()
+		anim_sub.prop(self, "generate_bone_mesh", icon="GROUP_BONE")
+		anim_sub.enabled = self.export_animations
 		layout.separator()
 		
-		trans_layout = layout.box()
-		trans_layout.prop(self, "export_rot90x", icon="ORIENTATION_GLOBAL")
-		trans_layout.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
+		rot90x = layout.column()
+		rot90x.prop(self, "export_rot90x", icon="ORIENTATION_GLOBAL")
+		rot90x.enabled = not self.export_rot90z
+		
+		rot90z = layout.column()
+		rot90z.prop(self, "export_rot90z", icon="ORIENTATION_GLOBAL")
+		rot90z.enabled = not self.export_rot90x
+		layout.separator()
+		
+		zero_transform = layout.column()
+		zero_transform.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
 	
 	def execute(self, context):
 		from . import xsi_blender_exporter

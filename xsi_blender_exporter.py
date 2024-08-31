@@ -252,7 +252,7 @@ class Save:
 	def matrix_to_bz2matrix(self, local_matrix):
 		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix.transposed())))
 	
-	def matrix_to_xsimatrix(self, local_matrix):
+	def matrix_x90_rot(self, local_matrix):
 		# create the X rotation matrix
 		mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
 		
@@ -269,6 +269,23 @@ class Save:
 		
 		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix_out)))
 
+	def matrix_z90_rot(self, local_matrix):
+		# create the Z rotation matrix
+		mat_rot90z = Matrix.Rotation(radians(90.0), 4, 'Z')
+		
+		# create the Z inverse rotation matrix from the Z rotation matrix
+		mat_rot90z_inv = mat_rot90z.inverted()
+		
+		# transpose these matrices
+		mat_rot90z.transpose()
+		mat_rot90z_inv.transpose()
+		mat_blender = local_matrix.transposed()
+		
+		# perform coordinate system transformation
+		local_matrix_out = mat_rot90z @ mat_blender @ mat_rot90z_inv
+		
+		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix_out)))
+	
 	def object_to_bz2frame(self, obj, is_root_level=False):
 		bz2frame = bz2xsi.Frame(obj.name)
 		bz2frame.mesh = None
@@ -278,7 +295,9 @@ class Save:
 			bz2frame.transform = bz2xsi.Matrix()
 		else:
 			if self.opt["export_rot90x"]:
-				bz2frame.transform = self.matrix_to_xsimatrix(obj.matrix_local)
+				bz2frame.transform = self.matrix_x90_rot(obj.matrix_local)
+			elif self.opt["export_rot90z"]:
+				bz2frame.transform = self.matrix_z90_rot(obj.matrix_local)
 			else:
 				bz2frame.transform = self.matrix_to_bz2matrix(obj.matrix_local)
 		
@@ -368,7 +387,13 @@ class Save:
 		matrix @= Matrix(bone.matrix_local)
 		
 		if self.opt["export_rot90x"]:
-			bz2frame.transform = self.matrix_to_xsimatrix(matrix)
+			bz2frame.transform = self.matrix_x90_rot(matrix)
+		elif self.opt["export_rot90z"]:
+			# zero out the matrix for the skeleton_root bone
+			if bone.name == "skeleton_root":
+				bz2frame.transform = bz2xsi.Matrix()
+			else:
+				bz2frame.transform = self.matrix_z90_rot(matrix)
 		else:
 			bz2frame.transform = self.matrix_to_bz2matrix(matrix)
 		
@@ -405,6 +430,10 @@ class Save:
 			
 			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
 			
+			# FIXME: The original code here outputs animation keys 3-4 times,
+			#        which bloats the .XSI file, and takes longer to export.
+			#        Just grabbing the frame range is a workaround, but should 
+			#        fix this properly somehow...
 			for pos in range(bpy.context.scene.frame_start,bpy.context.scene.frame_end + 1):
 			#for point in points:
 				#~ bpy.context.scene.frame_set(point.co[0])
@@ -417,18 +446,31 @@ class Save:
 				else:
 					matrix = Matrix(posebone.matrix)
 				
-				# because we've rotated the local matrix in 'matrix_to_bz2matrix', 
-				# we must also rotate the pose matrix here.
+				if self.opt["export_rot90x"]:
+					# because we've rotated the local matrix, 
+					# we must also rotate the pose matrix here.
+					
+					# create the X rotation matrix
+					mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
+					
+					# create the X inverse rotation matrix from the X rotation matrix
+					mat_rot90x_inv = mat_rot90x.inverted()
+					
+					# perform coordinate system transformation
+					matrix = mat_rot90x_inv @ matrix @ mat_rot90x
+				elif self.opt["export_rot90z"]:
+					# because we've rotated the local matrix, 
+					# we must also rotate the pose matrix here.
+					
+					# create the Z rotation matrix
+					mat_rot90z = Matrix.Rotation(radians(90.0), 4, 'Z')
+					
+					# create the Z inverse rotation matrix from the Z rotation matrix
+					mat_rot90z_inv = mat_rot90z.inverted()
+					
+					# perform coordinate system transformation
+					matrix = mat_rot90z_inv @ matrix @ mat_rot90z
 				
-				# create the X rotation matrix
-				mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
-				
-				# create the X inverse rotation matrix from the X rotation matrix
-				mat_rot90x_inv = mat_rot90x.inverted()
-				
-                # perform coordinate system transformation
-				matrix = mat_rot90x_inv @ matrix @ mat_rot90x
-        
 				if bz2_keyframe_type == 0:
 					bz2anim.add_key(pos, tuple(matrix.transposed().to_quaternion()))
 				
@@ -436,7 +478,7 @@ class Save:
 					bz2anim.add_key(pos, tuple(matrix.to_translation()))
 				
 				elif bz2_keyframe_type == 3:
-                    # matrix euler in degrees
+                    # matrix euler to degrees
 					mat_euler_to_degrees = matrix.to_euler()
 					mat_euler_to_degrees = [degrees(n) for n in mat_euler_to_degrees]
 					
