@@ -1,6 +1,7 @@
 import bpy
 from mathutils import Euler, Matrix, Vector
-from math import radians, degrees
+from math import radians, degrees, pi
+from decimal import *
 
 from . import bz2xsi
 
@@ -12,8 +13,8 @@ ALLOW_MESH_WITH_NO_FACES = False
 ALLOW_MESH_WITH_NO_MATERIAL = False
 ALLOW_ROOT_LEVEL_ANIMS = True
 
-KEYFRAME_PATHS = {"location", "rotation_euler", "rotation_quaternion"}
-ALLOWED_SUB_OBJECTS = {"MESH", "EMPTY", "ARMATURE"}
+KEYFRAME_PATHS = {"location", "rotation_euler", "rotation_quaternion", "scale"}
+ALLOWED_SUB_OBJECTS_GLOBAL = {"MESH", "EMPTY", "ARMATURE"}
 
 DEFAULT_MATERIAL = {
 	"diffuse": (bz2xsi.DEFAULT_DIFFUSE, tuple),
@@ -118,7 +119,7 @@ def generate_bone_mesh(bone, posebone):
 
 def get_keyframes_filtered(action, keyframe_filter):
 	filtered_points = {key: [] for key in keyframe_filter}
-	key_min, key_max = tuple(action.frame_range)
+	key_start, key_end = tuple(action.frame_range)
 	
 	for fcurve in action.fcurves:
 		if not fcurve.data_path in keyframe_filter:
@@ -130,9 +131,9 @@ def get_keyframes_filtered(action, keyframe_filter):
 			if point.co[0] in filtered_points[fcurve.data_path]:
 				continue
 			
-			if pos >= key_min and pos <= key_max:
+			if pos >= key_start and pos <= key_end:
 				filtered_points[fcurve.data_path].append(point)
-
+	
 	return filtered_points
 
 # Returns dictionary of {Bone Name: [(Vert Index, Vert Weight)...]}
@@ -162,7 +163,7 @@ def get_armature(bpy_obj):
 			if not armature_mod:
 				armature_mod = modifier.object
 			else:
-				print("XSI Warning: Multiple armature modifiers may cause unexpected results.")
+				print("XSI WARNING: Multiple armature modifiers may cause unexpected results.")
 				break
 	
 	return armature_mod
@@ -170,7 +171,7 @@ def get_armature(bpy_obj):
 def obj_hierarchy_to_linear(bpy_objects):
 	for bpy_obj in bpy_objects:
 		for bpy_subobj in bpy_obj.children:
-			if bpy_subobj.type in ALLOWED_SUB_OBJECTS:
+			if bpy_subobj.type in ALLOWED_SUB_OBJECTS_GLOBAL:
 				yield bpy_subobj
 			
 			yield from obj_hierarchy_to_linear([bpy_subobj])
@@ -183,10 +184,10 @@ class Save:
 		
 		original_keyframe_position = bpy.context.scene.frame_current
 		
-		if opt["export_animations"] and original_keyframe_position != bpy.context.scene.frame_start:
-			# This is so animated objects keyframe offset does not affect object's unanimated pose or matrix.
-			# We'll set it back to original_keyframe_position later when we're done.
-			bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+		#if opt["export_animations"] and original_keyframe_position != bpy.context.scene.frame_start:
+		#	# This is so animated objects keyframe offset does not affect object's unanimated pose or matrix.
+		#	# We'll set it back to original_keyframe_position later when we're done.
+		#	bpy.context.scene.frame_set(bpy.context.scene.frame_start)
 		
 		if opt["export_mode"] == "ACTIVE_COLLECTION":
 			objects = [obj for obj in bpy.context.view_layer.active_layer_collection.collection.objects if (obj.parent == None and not obj.hide_viewport)]
@@ -195,14 +196,14 @@ class Save:
 			objects = [obj for obj in bpy.data.objects if obj.select_get()]
 		
 		if len(objects) >= 2:
-			print("XSI Warning: BZ2 does not support more than 1 root-level object:", ", ".join(obj.name for obj in objects))
+			print("XSI WARNING: BattleZone II/Jedi Outcast/Jedi Academy do not support more than 1 root-level object:", ", ".join(obj.name for obj in objects))
 
 		self.referenced_objects = objects + list(obj_hierarchy_to_linear(objects))
 		self.enveloped_bz2frames = {}
 		self.bone_name_to_bz2frame = {}
 		
 		for obj in objects:
-			if obj.type in ALLOWED_SUB_OBJECTS:
+			if obj.type in ALLOWED_SUB_OBJECTS_GLOBAL:
 				self.bz2xsi_xsi.frames += [self.object_to_bz2frame(obj, is_root_level=True)]
 		
 		# Envelopes for bones
@@ -214,7 +215,7 @@ class Save:
 					if bone_name in vertex_weights:
 						bz2frame.envelopes.append(bz2xsi.Envelope(bz2bone, vertex_weights[bone_name]))
 					else:
-						print("XSI Warning: Vertex group not found for bone:", bone_name)
+						print("XSI WARNING: (Skin envelopes) Vertex group not found for bone:", bone_name)
 		
 		# Set keyframe position back, if changed during reading animation keyframes
 		if bpy.context.scene.frame_current != original_keyframe_position:
@@ -236,7 +237,11 @@ class Save:
 		if material.use_nodes and not mat["texture"]:
 			for node in material.node_tree.nodes:
 				if node.type == "TEX_IMAGE":
-					mat["texture"] = node.image.filepath
+                    # use a relative path
+					rel_path = str(node.image.filepath)
+					rel_path = rel_path.lstrip().split('base\\')[1]
+					
+					mat["texture"] = rel_path
 					break # Found an image texture.
 		
 		return bz2xsi.Material(
@@ -251,79 +256,105 @@ class Save:
 
 	def matrix_to_bz2matrix(self, local_matrix):
 		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix.transposed())))
-	
-	def matrix_x90_rot(self, local_matrix):
-		# create the X rotation matrix
-		mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
-		
-        # create the X inverse rotation matrix from the X rotation matrix
-		mat_rot90x_inv = mat_rot90x.inverted()
 
-		# transpose these matrices
-		mat_rot90x.transpose()
-		mat_rot90x_inv.transpose()
-		mat_blender = local_matrix.transposed()
-        
-		# perform coordinate system transformation
-		local_matrix_out = mat_rot90x @ mat_blender @ mat_rot90x_inv
+	def matrix_to_xsi(self, matrix):
+        # change the matrix to 'xsi style'
+		row_y = -matrix.row[1].copy()
+		row_z = matrix.row[2].copy()
+		matrix.row[1] = row_z
+		matrix.row[2] = row_y
 		
-		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix_out)))
+		col_y = -matrix.col[1].copy()
+		col_z = matrix.col[2].copy()
+		matrix.col[1] = col_z
+		matrix.col[2] = col_y
 
-	def matrix_z90_rot(self, local_matrix):
-		# create the Z rotation matrix
-		mat_rot90z = Matrix.Rotation(radians(90.0), 4, 'Z')
+	def bone_mat_rot_Y_to_X(self, matrix):
+		# change the matrix rotation from front Y+ to front X+
+		matrix[0][0], matrix[1][0], matrix[2][0], matrix[0][2], matrix[1][2], matrix[2][2] = matrix[0][2], matrix[1][2], matrix[2][2], - \
+			matrix[0][0], -matrix[1][0], -matrix[2][0]
 		
-		# create the Z inverse rotation matrix from the Z rotation matrix
-		mat_rot90z_inv = mat_rot90z.inverted()
+		col_y = matrix.col[1].copy()
+		col_x = -matrix.col[0].copy()
+		matrix.col[0] = col_y
+		matrix.col[1] = col_x
 		
-		# transpose these matrices
-		mat_rot90z.transpose()
-		mat_rot90z_inv.transpose()
-		mat_blender = local_matrix.transposed()
-		
-		# perform coordinate system transformation
-		local_matrix_out = mat_rot90z @ mat_blender @ mat_rot90z_inv
-		
-		return bz2xsi.Matrix(*list(tuple(row) for row in tuple(local_matrix_out)))
-	
+		matrix[3][0], matrix[3][1] = matrix[3][1], -matrix[3][0]      
+
 	def object_to_bz2frame(self, obj, is_root_level=False):
 		bz2frame = bz2xsi.Frame(obj.name)
 		bz2frame.mesh = None
 		is_skinned = self.opt["export_envelopes"] and get_armature(obj) in self.referenced_objects
-
-		if is_root_level and self.opt["zero_root_transforms"]:
-			bz2frame.transform = bz2xsi.Matrix()
+		
+		# when we want to don't want to export meshes even though 
+        # there's a model present in the scene
+		if self.opt["export_mesh"]:
+			ALLOWED_SUB_OBJECTS = ALLOWED_SUB_OBJECTS_GLOBAL
 		else:
-			if self.opt["export_rot90x"]:
-				bz2frame.transform = self.matrix_x90_rot(obj.matrix_local)
-			elif self.opt["export_rot90z"]:
-				# zero out the matrix for the skeleton_root object
-				if obj.name == "skeleton_root":
-					bz2frame.transform = bz2xsi.Matrix()
+			ALLOWED_SUB_OBJECTS = {"EMPTY", "ARMATURE"}
+		
+		# 'zero out' the matrix for the scene root (usually 'model_root') object(s)
+		if is_root_level and self.opt["zero_root_transforms"]:
+			bz2frame.transform = self.matrix_to_bz2matrix(Matrix.Identity(4))
+		else:
+			mat_transform = Matrix(obj.matrix_local)
+			
+			if self.opt["export_jedi"]:
+				# change the 'front' from Y+ to X+
+				self.bone_mat_rot_Y_to_X(mat_transform)
+			
+			if obj.parent:
+				mat_transform_parent = Matrix(obj.parent.matrix_local)
+				
+				if self.opt["export_jedi"]:
+					# change the 'front' from Y+ to X+
+					self.bone_mat_rot_Y_to_X(mat_transform_parent)
+				
+				mat_transform = mat_transform_parent.inverted_safe() @ mat_transform
+			
+			if self.opt["export_jedi"]:
+				# zero out the matrix for the 'mesh_root' / 'skeleton_root' objects
+				if obj.name == "mesh_root" or obj.name == "skeleton_root":
+					bz2frame.transform = self.matrix_to_bz2matrix(Matrix.Identity(4))
 				else:
-					bz2frame.transform = self.matrix_z90_rot(obj.matrix_local)
+					# convert the matrix to 'xsi style'
+					self.matrix_to_xsi(mat_transform)
+					
+					# send the matrix to 'bz2xsi.py' for writing...
+					bz2frame.transform = self.matrix_to_bz2matrix(mat_transform)
 			else:
 				bz2frame.transform = self.matrix_to_bz2matrix(obj.matrix_local)
-		
+			
 		if is_skinned:
+			mat_transform2 = Matrix(obj.matrix_local)
+			
+			if self.opt["export_jedi"]:
+				# change the 'front' from Y+ to X+
+				self.bone_mat_rot_Y_to_X(mat_transform2)
+			
+			# send the matrix to 'bz2xsi.py' for writing...
 			bz2frame.pose = bz2frame.transform
 		
 		obj_eval = obj.evaluated_get(self.depsgraph)
-		data = obj_eval.data
+		data = obj_eval.data		
 		
 		scale = obj_eval.matrix_local.to_scale()
+		
 		if scale != Vector((1.0, 1.0, 1.0)):
-			print("XSI Warning: Scaling information %r contained in object %r is not supported by BZ2." % (scale, obj.name))
+			print("XSI WARNING: The scale for object %r = %r, which isn't supported by BattleZone II/Jedi Outcast/Jedi Academy. Ensure all objects have the scale of 1.0 on all axis." % (obj.name, scale))
 		
 		if obj.type == "MESH" and not len(data.vertices) <= 0:
 			if not ALLOW_MESH_WITH_NO_FACES and len(data.polygons) <= 0:
-				print("XSI Warning: Mesh for object %r has no faces, ignoring mesh data." % obj.name)
+				print("XSI WARNING: Mesh object %r doesn't have any faces, skipping." % obj.name)
 			
 			else:
 				if self.opt["export_mesh"]:
 					bz2frame.mesh = self.mesh_to_bz2mesh(data, bz2frame.name if USE_FRAME_NAME_AS_MESH_NAME else None)
 					
 					if is_skinned:
+                        # ensure the we're setting the skin weights at frame 0.
+						bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+						
 						self.enveloped_bz2frames[bz2frame] = obj_eval
 		
 		elif obj.type == "ARMATURE":
@@ -344,7 +375,7 @@ class Save:
 			
 			if bz2_animations:
 				if is_root_level:
-					print("XSI Warning: Root-level object %r animation data may not behave as expected in BZ2." % obj.name)
+					print("XSI WARNING: Root-level object %r has animation data, and may not behave as expected in BattleZone II/Jedi Outcast/Jedi Academy." % obj.name)
 				
 				bz2frame.animation_keys += list(self.animation_to_bz2anim(obj_eval))
 		
@@ -355,27 +386,44 @@ class Save:
 		return bz2frame
 	
 	def animation_to_bz2anim(self, obj):
-		filtered_keyframe_points = get_keyframes_filtered(obj.animation_data.action, KEYFRAME_PATHS)
+		filtered_keyframes = get_keyframes_filtered(obj.animation_data.action, KEYFRAME_PATHS)
 		
-		# Convert the filtered keyframe points to bz2 keyframe animations
-		for key_type, points in filtered_keyframe_points.items():
-			bz2_keyframe_type = 2 if key_type == "location" else 0
-			
+		# Convert the filtered keyframes to bz2 keyframe animations
+		for key_type, points in filtered_keyframes.items():
+			if key_type == "scale":
+				bz2_keyframe_type = 1
+			elif key_type == "location":
+				bz2_keyframe_type = 2
+			else:
+				if self.opt["export_euler"]:
+					bz2_keyframe_type = 3
+				else:
+					bz2_keyframe_type = 0
+            
 			if not points:
 				continue
 			
 			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
 			
-			for point in points:
-				#~ bpy.context.scene.frame_set(point.co[0])
-				pos = int(point.co[0])
+			for pos in range(bpy.context.scene.frame_start, bpy.context.scene.frame_end + 1):
 				bpy.context.scene.frame_set(pos)
+                
+				mat_obj = Matrix(obj.matrix_local)
 				
-				if bz2_keyframe_type == 2:
-					bz2anim.add_key(pos, tuple(Matrix(obj.matrix_local).to_translation()))
-				elif bz2_keyframe_type == 0:
-					bz2anim.add_key(pos, tuple(Matrix(obj.matrix_local).transposed().to_quaternion()))
-
+				if self.opt["export_jedi"]:
+					# convert the matrix to 'xsi style'
+					self.matrix_to_xsi(mat_obj)
+				
+				# send the keys to 'bz2xsi.py' for writing...
+				if bz2_keyframe_type == 0:
+					bz2anim.add_key(pos, tuple(mat_obj.transposed().to_quaternion()))
+				elif bz2_keyframe_type == 1:
+					bz2anim.add_key(pos, tuple(mat_obj.to_scale()))
+				elif bz2_keyframe_type == 2:
+					bz2anim.add_key(pos, tuple(mat_obj.to_translation()))
+				elif bz2_keyframe_type == 3:
+					bz2anim.add_key(pos, tuple([degrees(n) for n in mat_obj.to_euler()]))
+			
 			yield bz2anim
 	
 	def bone_to_bz2frame(self, bone, posebone, armature):
@@ -383,20 +431,79 @@ class Save:
 		bz2frame.is_bone = True
 		self.bone_name_to_bz2frame[bone.name] = bz2frame
 		
-		matrix = Matrix()
+        # FrameTransformMatrix.
+		# root bones are in world co-ordinates, and the child bones are relative to the parent
+        
+		# DEBUGGING ONLY
+		#print("****************************************\n")
+		#print("Bone: \"%s\" \n" % bone.name)
+		#
 		
-		if bone.parent:
-			matrix @= Matrix(bone.parent.matrix_local).inverted()
-		
-		matrix @= Matrix(bone.matrix_local)
-		
-		if self.opt["export_rot90x"]:
-			bz2frame.transform = self.matrix_x90_rot(matrix)
-		elif self.opt["export_rot90z"]:
-			bz2frame.transform = self.matrix_z90_rot(matrix)
+		if bone.parent is not None:
+			matrix_local_parent = Matrix()
+			matrix_local_parent @= Matrix(bone.parent.matrix_local)
+			
+			matrix_local = Matrix()
+			matrix_local @= Matrix(bone.matrix_local)
+            
+			if self.opt["export_jedi"]:
+				# change the 'front' from Y+ to X+
+				self.bone_mat_rot_Y_to_X(matrix_local_parent)
+				self.bone_mat_rot_Y_to_X(matrix_local)
+				
+			mat_transform = matrix_local_parent.inverted() @ matrix_local
+            
+			if self.opt["export_jedi"]:
+				# we want to be compatible with Ravensoft's XSI 3 files, so
+				# we need to apply face bone scaling of '1.087000' to match theirs...
+				if bone.parent.name == "face_always_":
+					# change the scale for the child bones of 'face_always_'
+					mat_transform @= Matrix.Scale(1.087000, 4)
+			
+            # DEBUGGING ONLY
+			#print("Matrix, relative to bone parent -")
+            #
 		else:
-			bz2frame.transform = self.matrix_to_bz2matrix(matrix)
+			matrix_local = Matrix()
+			matrix_local @= Matrix(bone.matrix_local)
+			
+			if self.opt["export_jedi"]:
+				# change the 'front' from Y+ to X+
+				self.bone_mat_rot_Y_to_X(matrix_local)
+			
+			mat_transform = matrix_local
+			
+			# DEBUGGING ONLY
+			#print("|> ROOT BONE <| \n")
+			#print("Matrix, relative to armature object -")
+			#
+			
+		if self.opt["export_jedi"]:
+            # convert the matrix to 'xsi style'
+			self.matrix_to_xsi(mat_transform)
+			
+			# send the matrix to 'bz2xsi.py' for writing...
+			bz2frame.transform = self.matrix_to_bz2matrix(mat_transform)
+			
+			# DEBUGGING ONLY
+			#mat_debug = Matrix(mat_transform)
+			#print(mat_debug.transposed())
+			#print("\n")
+			
+			#sca = Vector(mat_transform.to_scale())            
+			#print("Scale: \nX = %.8f \nY = %.8f \nZ = %.8f \n" % (sca.x, sca.y, sca.z))
+			
+			#deg = Vector([degrees(n) for n in mat_transform.to_euler()])
+			#print("Rotation (Euler Degrees): \nX = %.8f \nY = %.8f \nZ = %.8f \n" % (deg.x, deg.y, deg.z))
+			
+			#pos = Vector(mat_transform.to_translation())
+			#print("Position: \nX = %.8f \nY = %.8f \nZ = %.8f \n" % (pos.x, pos.y, pos.z))
+			#            
+		else:
+			bz2frame.transform = self.matrix_to_bz2matrix(mat_transform)
 		
+		# SI_FrameBasePoseMatrix
+        # just a copy of the 'FrameTransformMatrix'
 		bz2frame.pose = bz2frame.transform
 		
 		for child_bone, child_posebone in zip(bone.children, posebone.children):
@@ -413,83 +520,84 @@ class Save:
 		return bz2frame
 	
 	def bone_animation_to_bz2anim(self, bone, posebone, armature):
-		# fcurves will be in the armature object, not in the bone object.
 		keyframe_filter = ["pose.bones[\"%s\"].%s" % (bone.name, path) for path in KEYFRAME_PATHS]
-		filtered_keyframe_points = get_keyframes_filtered(armature.animation_data.action, keyframe_filter)
+		filtered_keyframes = get_keyframes_filtered(armature.animation_data.action, keyframe_filter)
 		
-		# Convert the filtered keyframe points to bz2 keyframe animations
+		# convert the filtered keyframes to bz2 keyframe animations
 		location_path_name = "pose.bones[\"%s\"].location" % bone.name
-		for key_type, points in filtered_keyframe_points.items():
-			if self.opt["export_euler"]:
-				bz2_keyframe_type = 2 if key_type == location_path_name else 3
+		scale_path_name = "pose.bones[\"%s\"].scale" % bone.name
+        
+		for key_type, points in filtered_keyframes.items():
+			if key_type == scale_path_name:
+				bz2_keyframe_type = 1
+			elif key_type == location_path_name:
+				bz2_keyframe_type = 2
 			else:
-				bz2_keyframe_type = 2 if key_type == location_path_name else 0
+				if self.opt["export_euler"]:
+					bz2_keyframe_type = 3
+				else:
+					bz2_keyframe_type = 0
 			
 			if not points:
 				continue
-			
+                
 			bz2anim = bz2xsi.AnimationKey(bz2_keyframe_type)
 			
-			# FIXME: The original code here outputs animation keys 3-4 times,
-			#        which bloats the .XSI file, and takes longer to export.
-			#        Just grabbing the frame range is a workaround, but should 
-			#        fix this properly somehow...
-			for pos in range(bpy.context.scene.frame_start,bpy.context.scene.frame_end + 1):
-			#for point in points:
-				#~ bpy.context.scene.frame_set(point.co[0])
-				#pos = int(point.co[0])
+			for pos in range(bpy.context.scene.frame_start, bpy.context.scene.frame_end + 1):
 				bpy.context.scene.frame_set(pos)
 				
-				if posebone.parent:
-					matrix = Matrix(posebone.parent.matrix).inverted()
-					matrix @= Matrix(posebone.matrix)
+				if posebone.parent is not None:
+					matrix_local_parent = Matrix()
+					matrix_local_parent @= Matrix(posebone.parent.matrix)
+					
+					matrix_local = Matrix()
+					matrix_local @= Matrix(posebone.matrix)
+                    
+					if self.opt["export_jedi"]:
+						# change the 'front' from Y+ to X+
+						self.bone_mat_rot_Y_to_X(matrix_local_parent)
+						self.bone_mat_rot_Y_to_X(matrix_local)
+					
+					mat_posebone = matrix_local_parent.inverted() @ matrix_local
+					
+					if self.opt["export_jedi"]:
+						# we want to be compatible with Ravensoft's XSI 3 files, so
+                        # we need to apply face bone scaling of '1.087000' to match theirs...
+						if posebone.parent.name == "face_always_":
+							# change the scale for the child bones of 'face_always_'
+							mat_posebone @= Matrix.Scale(1.087000, 4)
 				else:
-					matrix = Matrix(posebone.matrix)
+					matrix_local = Matrix()
+					matrix_local @= Matrix(posebone.matrix)
+					
+					if self.opt["export_jedi"]:
+						# change the 'front' from Y+ to X+
+						self.bone_mat_rot_Y_to_X(matrix_local)
+					
+					mat_posebone = matrix_local
 				
-				if self.opt["export_rot90x"]:
-					# because we've rotated the local matrix, 
-					# we must also rotate the pose matrix here.
-					
-					# create the X rotation matrix
-					mat_rot90x = Matrix.Rotation(radians(90.0), 4, 'X')
-					
-					# create the X inverse rotation matrix from the X rotation matrix
-					mat_rot90x_inv = mat_rot90x.inverted()
-					
-					# perform coordinate system transformation
-					matrix = mat_rot90x_inv @ matrix @ mat_rot90x
-				elif self.opt["export_rot90z"]:
-					# because we've rotated the local matrix, 
-					# we must also rotate the pose matrix here.
-					
-					# create the Z rotation matrix
-					mat_rot90z = Matrix.Rotation(radians(90.0), 4, 'Z')
-					
-					# create the Z inverse rotation matrix from the Z rotation matrix
-					mat_rot90z_inv = mat_rot90z.inverted()
-					
-					# perform coordinate system transformation
-					matrix = mat_rot90z_inv @ matrix @ mat_rot90z
+				if self.opt["export_jedi"]:
+					# convert the matrix to 'xsi style'
+					self.matrix_to_xsi(mat_posebone)
 				
+				# send the keys to 'bz2xsi.py' for writing...
 				if bz2_keyframe_type == 0:
-					bz2anim.add_key(pos, tuple(matrix.transposed().to_quaternion()))
-				
+					bz2anim.add_key(pos, tuple(mat_posebone.transposed().to_quaternion()))
+				elif bz2_keyframe_type == 1:
+					bz2anim.add_key(pos, tuple(mat_posebone.to_scale()))
 				elif bz2_keyframe_type == 2:
-					bz2anim.add_key(pos, tuple(matrix.to_translation()))
-				
+					bz2anim.add_key(pos, tuple(mat_posebone.to_translation()))
 				elif bz2_keyframe_type == 3:
-                    # matrix euler to degrees
-					mat_euler_to_degrees = matrix.to_euler()
-					mat_euler_to_degrees = [degrees(n) for n in mat_euler_to_degrees]
-					
-					bz2anim.add_key(pos, tuple(mat_euler_to_degrees))
+					bz2anim.add_key(pos, tuple([degrees(n) for n in mat_posebone.to_euler()]))
 
 			yield bz2anim
 	
 	def mesh_to_bz2mesh(self, data, name=None):
 		bz2mesh = bz2xsi.Mesh(name if name else data.name)
+		
 		if OLD_NORMALS:
 			data.calc_normals_split()
+		
 		bz2materials = []
 		
 		if self.opt["export_mesh_materials"]:
@@ -497,7 +605,14 @@ class Save:
 				bz2materials += [self.material_to_bz2material(material)]
 		
 		for vertex in data.vertices:
-			bz2mesh.vertices += [tuple(vertex.co.xyz)]
+			if self.opt["export_jedi"]:
+                # change the vertex positions to 'xsi style'
+				vert_Y = vertex.co.y * -1
+				vertex.co.y = vertex.co.z
+				vertex.co.z = vert_Y
+			
+			bz2mesh.vertices += [tuple(vertex.co.xyz)]				
+                
 		
 		for polygon in data.polygons:
 			bz2mesh.faces += [tuple(polygon.vertices)]
@@ -507,7 +622,8 @@ class Save:
 				bz2mesh.face_materials += [bz2materials[polygon.material_index]]
 		
 		elif not ALLOW_MESH_WITH_NO_MATERIAL:
-			print("XSI Warning: Mesh %r has no materials, adding default material." % name)
+			print("XSI WARNING: Mesh %r doesn't have any materials, adding a default material instead." % name)
+			
 			bz2mesh.face_materials = [bz2xsi.Material()] # Default material
 		
 		active_uv_layer = data.uv_layers.active

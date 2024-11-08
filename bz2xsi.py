@@ -1,4 +1,4 @@
-"""This module provides BZ2 XSI utilities, including a parser and writer for XSI files."""
+"""This module provides BZ2 XSI utilities, including a writer for XSI files."""
 VERSION = 1.13
 
 # No print calls will be made by the module if this is False
@@ -16,6 +16,9 @@ DEFAULT_XSI_NAME = "<XSI ROOT>"
 
 RENAME_DUPLICATE_NAMED_FRAMES = True
 DUPLICATE_FRAME_NOEXCEPT = False
+
+import bpy
+from datetime import datetime
 
 class DuplicateFrame(Exception): pass
 
@@ -199,10 +202,10 @@ class Frame(_FrameContainer):
 
 class Matrix:
 	def __init__(self, right=None, up=None, front=None, posit=None):
-		self.right = right if right else (1.0, 0.0, 0.0, 0.0)
-		self.up    = up    if up    else (0.0, 1.0, 0.0, 0.0)
-		self.front = front if front else (0.0, 0.0, 1.0, 0.0)
-		self.posit = posit if posit else (0.0, 0.0, 0.0, 1.0)
+		self.right = right #if right else (1.0, 0.0, 0.0, 0.0)
+		self.up    = up    #if up    else (0.0, 1.0, 0.0, 0.0)
+		self.front = front #if front else (0.0, 0.0, 1.0, 0.0)
+		self.posit = posit #if posit else (0.0, 0.0, 0.0, 1.0)
 	
 	def __str__(self):
 		return "<Matrix>(x=%f y=%f z=%f)</Matrix>" % tuple(self.posit[0:3])
@@ -926,7 +929,9 @@ class Writer:
 	
 	def write_vector_list(self, t, format_string, vectors):
 		self.write(t, "%d;" % len(vectors))
-		if not vectors: return
+		
+		if not vectors: 
+			return
 		
 		for vector in vectors[0:-1]:
 			self.write(t, format_string % tuple(vector) + ",")
@@ -938,15 +943,19 @@ class Writer:
 			return "%d;" % len(face) + ",".join(str(i) for i in face) + ";"
 		
 		self.write(t, "%d;" % len(faces))
-		if not faces: return
+		
+		if not faces: 
+			return
 		
 		if not indexed:
 			for face in faces[0:-1]:
 				self.write(t, make_face(face) + ",")
+			
 			self.write(t, make_face(faces[-1]) + ";")
 		else:
 			for index, face in enumerate(faces[0:-1]):
 				self.write(t, "%d;" % index + make_face(face) + ",")
+			
 			self.write(t, "%d;" % (len(faces)-1) + make_face(faces[-1]) + ";")
 	
 	def write_face_vertices(self, t, format_string, faces, vertices):
@@ -971,7 +980,7 @@ class Writer:
 		self.write(t, format_string % (keys[-1][0], vector_size, *keys[-1][1], ";"))
 	
 	def write_xsi(self):
-		self.write(0, "xsi 0101txt 0032\n")
+		self.write(0, "xsi 0101txt 0032\n") 
 		
 		self.write(0, "SI_CoordinateSystem coord {")
 		self.write(1, "1;")
@@ -980,15 +989,27 @@ class Writer:
 		self.write(1, "0;")
 		self.write(1, "2;")
 		self.write(1, "5;")
+		self.write(0, "}\n")
+		
+		self.write(0, "SI_Angle {")
+		self.write(1, "0;")
+		self.write(0, "}\n")
+		
+		self.write(0, "SI_Ambience {")
+		self.write(1, "0.000000; 0.000000; 0.000000;;")
 		self.write(0, "}")
 		
 		for root_frame in self.xsi.frames:
-			self.write()
+			print("Writing object data...")
+			
+			self.write()			
 			self.write_frame(0, root_frame)
 		
 		animated_frames = tuple(self.xsi.get_animated_frames())
 		
 		if animated_frames:
+			print("Writing animation data...")
+			
 			self.write(0, "\nAnimationSet {")
 			
 			for frame in animated_frames:
@@ -997,7 +1018,10 @@ class Writer:
 			self.write(0, "}")
 		
 		skinned_frames = tuple(self.xsi.get_skinned_frames())
+		
 		if skinned_frames:
+			print("Writing skin envelope data...")
+			
 			self.write(0, "\nSI_EnvelopeList {")
 			self.write(1, "%d;" % self.xsi.get_envelope_count())
 			
@@ -1115,7 +1139,7 @@ class Writer:
 			self.write(t + 1, "}")
 		
 		self.write(t, "}")
-	
+		
 	def write_envelope(self, t, frame, envelope):
 		self.write(t, "SI_Envelope {")
 		self.write(t + 1, "\"frm-%s\";" % self.get_safe_name(frame.name))
