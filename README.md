@@ -1,4 +1,4 @@
-Added export options to the standard XSI 1.1 format. 
+Updated for use with exporting XSI files for Jedi Outcast/Academy (export only). 
 
 --------------------------------
 
