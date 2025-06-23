@@ -453,13 +453,6 @@ class Save:
 				
 			mat_transform = matrix_local_parent.inverted() @ matrix_local
             
-			if self.opt["export_jedi"]:
-				# we want to be compatible with Ravensoft's XSI 3 files, so
-				# we need to apply face bone scaling of '1.087000' to match theirs...
-				if bone.parent.name == "face_always_":
-					# change the scale for the child bones of 'face_always_'
-					mat_transform @= Matrix.Scale(1.087000, 4)
-			
             # DEBUGGING ONLY
 			#print("Matrix, relative to bone parent -")
             #
@@ -560,12 +553,6 @@ class Save:
 					
 					mat_posebone = matrix_local_parent.inverted() @ matrix_local
 					
-					if self.opt["export_jedi"]:
-						# we want to be compatible with Ravensoft's XSI 3 files, so
-                        # we need to apply face bone scaling of '1.087000' to match theirs...
-						if posebone.parent.name == "face_always_":
-							# change the scale for the child bones of 'face_always_'
-							mat_posebone @= Matrix.Scale(1.087000, 4)
 				else:
 					matrix_local = Matrix()
 					matrix_local @= Matrix(posebone.matrix)
@@ -583,8 +570,9 @@ class Save:
 				# send the keys to 'bz2xsi.py' for writing...
 				if bz2_keyframe_type == 0:
 					bz2anim.add_key(pos, tuple(mat_posebone.transposed().to_quaternion()))
-				elif bz2_keyframe_type == 1:
-					bz2anim.add_key(pos, tuple(mat_posebone.to_scale()))
+				# don't need to write scale keys...
+				#elif bz2_keyframe_type == 1:
+				#	bz2anim.add_key(pos, tuple(mat_posebone.to_scale()))
 				elif bz2_keyframe_type == 2:
 					bz2anim.add_key(pos, tuple(mat_posebone.to_translation()))
 				elif bz2_keyframe_type == 3:
