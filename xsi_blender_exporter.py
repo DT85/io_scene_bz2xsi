@@ -269,7 +269,7 @@ class Save:
 		matrix.col[1] = col_z
 		matrix.col[2] = col_y
 
-	def bone_mat_rot_Y_to_X(self, matrix):
+	def bone_mat_front_Y_to_X(self, matrix):
 		# change the matrix rotation from front Y+ to front X+
 		matrix[0][0], matrix[1][0], matrix[2][0], matrix[0][2], matrix[1][2], matrix[2][2] = matrix[0][2], matrix[1][2], matrix[2][2], - \
 			matrix[0][0], -matrix[1][0], -matrix[2][0]
@@ -299,20 +299,20 @@ class Save:
 		else:
 			mat_transform = Matrix(obj.matrix_local)
 			
-			if self.opt["export_jedi"]:
+			if self.opt["export_frontYtoX"]:
 				# change the 'front' from Y+ to X+
-				self.bone_mat_rot_Y_to_X(mat_transform)
+				self.bone_mat_front_Y_to_X(mat_transform)
 			
 			if obj.parent:
 				mat_transform_parent = Matrix(obj.parent.matrix_local)
 				
-				if self.opt["export_jedi"]:
+				if self.opt["export_frontYtoX"]:
 					# change the 'front' from Y+ to X+
-					self.bone_mat_rot_Y_to_X(mat_transform_parent)
+					self.bone_mat_front_Y_to_X(mat_transform_parent)
 				
 				mat_transform = mat_transform_parent.inverted_safe() @ mat_transform
 			
-			if self.opt["export_jedi"]:
+			if self.opt["export_frontYtoX"]:
 				# zero out the matrix for the 'mesh_root' / 'skeleton_root' objects
 				if obj.name == "mesh_root" or obj.name == "skeleton_root":
 					bz2frame.transform = self.matrix_to_bz2matrix(Matrix.Identity(4))
@@ -328,9 +328,9 @@ class Save:
 		if is_skinned:
 			mat_transform2 = Matrix(obj.matrix_local)
 			
-			if self.opt["export_jedi"]:
+			if self.opt["export_frontYtoX"]:
 				# change the 'front' from Y+ to X+
-				self.bone_mat_rot_Y_to_X(mat_transform2)
+				self.bone_mat_front_Y_to_X(mat_transform2)
 			
 			# send the matrix to 'bz2xsi.py' for writing...
 			bz2frame.pose = bz2frame.transform
@@ -446,10 +446,10 @@ class Save:
 			matrix_local = Matrix()
 			matrix_local @= Matrix(bone.matrix_local)
             
-			if self.opt["export_jedi"]:
+			if self.opt["export_frontYtoX"]:
 				# change the 'front' from Y+ to X+
-				self.bone_mat_rot_Y_to_X(matrix_local_parent)
-				self.bone_mat_rot_Y_to_X(matrix_local)
+				self.bone_mat_front_Y_to_X(matrix_local_parent)
+				self.bone_mat_front_Y_to_X(matrix_local)
 				
 			mat_transform = matrix_local_parent.inverted() @ matrix_local
             
@@ -460,9 +460,9 @@ class Save:
 			matrix_local = Matrix()
 			matrix_local @= Matrix(bone.matrix_local)
 			
-			if self.opt["export_jedi"]:
+			if self.opt["export_frontYtoX"]:
 				# change the 'front' from Y+ to X+
-				self.bone_mat_rot_Y_to_X(matrix_local)
+				self.bone_mat_front_Y_to_X(matrix_local)
 			
 			mat_transform = matrix_local
 			
@@ -471,7 +471,7 @@ class Save:
 			#print("Matrix, relative to armature object -")
 			#
 			
-		if self.opt["export_jedi"]:
+		if self.opt["export_frontYtoX"]:
             # convert the matrix to 'xsi style'
 			self.matrix_to_xsi(mat_transform)
 			
@@ -496,7 +496,7 @@ class Save:
 			bz2frame.transform = self.matrix_to_bz2matrix(mat_transform)
 		
 		# SI_FrameBasePoseMatrix
-        # just a copy of the 'FrameTransformMatrix'
+        # just a copy of the 'FrameTransformMatrix'. send the matrix to 'bz2xsi.py' for writing...
 		bz2frame.pose = bz2frame.transform
 		
 		for child_bone, child_posebone in zip(bone.children, posebone.children):
@@ -546,10 +546,10 @@ class Save:
 					matrix_local = Matrix()
 					matrix_local @= Matrix(posebone.matrix)
                     
-					if self.opt["export_jedi"]:
+					if self.opt["export_frontYtoX"]:
 						# change the 'front' from Y+ to X+
-						self.bone_mat_rot_Y_to_X(matrix_local_parent)
-						self.bone_mat_rot_Y_to_X(matrix_local)
+						self.bone_mat_front_Y_to_X(matrix_local_parent)
+						self.bone_mat_front_Y_to_X(matrix_local)
 					
 					mat_posebone = matrix_local_parent.inverted() @ matrix_local
 					
@@ -557,13 +557,13 @@ class Save:
 					matrix_local = Matrix()
 					matrix_local @= Matrix(posebone.matrix)
 					
-					if self.opt["export_jedi"]:
+					if self.opt["export_frontYtoX"]:
 						# change the 'front' from Y+ to X+
-						self.bone_mat_rot_Y_to_X(matrix_local)
+						self.bone_mat_front_Y_to_X(matrix_local)
 					
 					mat_posebone = matrix_local
 				
-				if self.opt["export_jedi"]:
+				if self.opt["export_frontYtoX"]:
 					# convert the matrix to 'xsi style'
 					self.matrix_to_xsi(mat_posebone)
 				

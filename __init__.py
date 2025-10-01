@@ -237,7 +237,7 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		description="Export mesh data",
 		default=True
 	)
-
+    
 	export_mesh_uvmap: BoolProperty(
 		name="UV Map",
 		description="Export mesh UV map coordinates",
@@ -262,16 +262,10 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		default=True
 	)
 
-	export_rot90x: BoolProperty(
-		name="Rotate Matrices (X Axis)",
-		description="Rotate object & bone matrices with a X axis +90 rotation",
-		default=False
-	)
-	
-	export_rot90z: BoolProperty(
-		name="Rotate Matrices (Z Axis)",
-		description="Rotate object & bone matrices with a Z axis +90 rotation",
-		default=False
+	export_frontYtoX: BoolProperty(
+		name="Change axis from 'front' Y+ to 'front' X+",
+		description="Change object & bone axis from 'Y+ front' to 'X+ front'",
+		default=True
 	)
 	
 	export_animations: BoolProperty(
@@ -352,13 +346,9 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		anim_sub.enabled = self.export_animations
 		layout.separator()
 		
-		rot90x = layout.column()
-		rot90x.prop(self, "export_rot90x", icon="ORIENTATION_GLOBAL")
-		rot90x.enabled = not self.export_rot90z
-		
-		rot90z = layout.column()
-		rot90z.prop(self, "export_rot90z", icon="ORIENTATION_GLOBAL")
-		rot90z.enabled = not self.export_rot90x
+		frontYtoX = layout.column()
+		frontYtoX.prop(self, "export_frontYtoX", icon="ORIENTATION_GLOBAL")
+		#frontYtoX.enabled = not self.export_frontYtoX
 		layout.separator()
 		
 		zero_transform = layout.column()
