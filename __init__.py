@@ -231,9 +231,15 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		description="Which objects are to be exported",
 		default="ACTIVE_COLLECTION"
 	)
-
+	
+	zero_root_transforms: BoolProperty(
+		name="Reset Root Transforms",
+		description="Root-level objects have default transform matrices",
+		default=True
+	)
+	
 	export_mesh: BoolProperty(
-		name="Mesh",
+		name="Export Mesh",
 		description="Export mesh data",
 		default=True
 	)
@@ -261,15 +267,21 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		description="Export skin envelopes for bones",
 		default=True
 	)
-
-	export_frontYtoX: BoolProperty(
-		name="Change axis from 'front' Y+ to 'front' X+",
-		description="Change object & bone axis from 'Y+ front' to 'X+ front'",
+	
+	export_jedi: BoolProperty(
+		name="Export For Jedi Outcast/Academy",
+		description="Export for Jedi Outcast/Academy",
+		default=True
+	)
+	
+	export_facefix: BoolProperty(
+		name="Face bones scale fix",
+		description="Fix the face bones scale to match RavenSoft's '_humanoid' JK2/JKA XSI 3 files",
 		default=True
 	)
 	
 	export_animations: BoolProperty(
-		name="Animations",
+		name="Export Animations",
 		description="Export rotation & translation animations",
 		default=True
 	)
@@ -280,12 +292,6 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		default=True
 	)
 	
-	zero_root_transforms: BoolProperty(
-		name="Reset Root Transforms",
-		description="Root-level objects have default transform matrices",
-		default=True
-	)
-
 	generate_empty_mesh: BoolProperty(
 		name="Generate Empty Meshes",
 		description="Create a pointer-like mesh for empty objects to visualize their direction (e.g. for hardpoints)",
@@ -308,8 +314,13 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 			export_layout.label(text="%s (%d objects)" % (collection.name, len(collection.objects)))
 		layout.separator()
 		
+		zero_transform = layout.column()
+		zero_transform.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
+		layout.separator()
+		
 		mesh_layout = layout.box()
 		mesh_layout.prop(self, "export_mesh", icon="MESH_DATA")
+		mesh_layout.separator()
 		
 		sub = mesh_layout.column()
 		sub.prop(self, "export_mesh_uvmap", icon="GROUP_UVS")
@@ -326,7 +337,6 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
 		sub = mesh_layout.column()
 		sub.prop(self, "export_envelopes", icon="GROUP_VERTEX")
 		sub.enabled = self.export_mesh
-		mesh_layout.separator()
 		
 		sub = mesh_layout.column()
 		sub.prop(self, "generate_empty_mesh", icon="EMPTY_DATA")
@@ -335,25 +345,26 @@ class ExportXSI(bpy.types.Operator, ExportHelper):
         
 		anim_layout = layout.box()
 		anim_layout.prop(self, "export_animations", icon="ARMATURE_DATA")
+		anim_layout.separator()
 		
 		anim_sub = anim_layout.column()
 		anim_sub.prop(self, "export_euler", icon="KEYFRAME")
 		anim_sub.enabled = self.export_animations
-		anim_layout.separator()
 		
 		anim_sub = anim_layout.column()
 		anim_sub.prop(self, "generate_bone_mesh", icon="GROUP_BONE")
 		anim_sub.enabled = self.export_animations
 		layout.separator()
 		
-		frontYtoX = layout.column()
-		frontYtoX.prop(self, "export_frontYtoX", icon="ORIENTATION_GLOBAL")
-		#frontYtoX.enabled = not self.export_frontYtoX
+		jedi_layout = layout.box()
+		jedi_layout.prop(self, "export_jedi", icon="POSE_HLT")
+		jedi_layout.separator()
+		
+		jedi_sub = jedi_layout.column()
+		jedi_sub.prop(self, "export_facefix", icon="MESH_MONKEY")
+		jedi_sub.enabled = self.export_jedi
 		layout.separator()
 		
-		zero_transform = layout.column()
-		zero_transform.prop(self, "zero_root_transforms", icon="ORIENTATION_GLOBAL")
-	
 	def execute(self, context):
 		from . import xsi_blender_exporter
 		keywords = self.as_keywords(ignore=("filter_glob", "directory"))

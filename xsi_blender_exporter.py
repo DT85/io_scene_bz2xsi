@@ -299,20 +299,20 @@ class Save:
 		else:
 			mat_transform = Matrix(obj.matrix_local)
 			
-			if self.opt["export_frontYtoX"]:
+			if self.opt["export_jedi"]:
 				# change the 'front' from Y+ to X+
 				self.bone_mat_front_Y_to_X(mat_transform)
 			
 			if obj.parent:
 				mat_transform_parent = Matrix(obj.parent.matrix_local)
 				
-				if self.opt["export_frontYtoX"]:
+				if self.opt["export_jedi"]:
 					# change the 'front' from Y+ to X+
 					self.bone_mat_front_Y_to_X(mat_transform_parent)
 				
 				mat_transform = mat_transform_parent.inverted_safe() @ mat_transform
 			
-			if self.opt["export_frontYtoX"]:
+			if self.opt["export_jedi"]:
 				# zero out the matrix for the 'mesh_root' / 'skeleton_root' objects
 				if obj.name == "mesh_root" or obj.name == "skeleton_root":
 					bz2frame.transform = self.matrix_to_bz2matrix(Matrix.Identity(4))
@@ -328,7 +328,7 @@ class Save:
 		if is_skinned:
 			mat_transform2 = Matrix(obj.matrix_local)
 			
-			if self.opt["export_frontYtoX"]:
+			if self.opt["export_jedi"]:
 				# change the 'front' from Y+ to X+
 				self.bone_mat_front_Y_to_X(mat_transform2)
 			
@@ -446,13 +446,20 @@ class Save:
 			matrix_local = Matrix()
 			matrix_local @= Matrix(bone.matrix_local)
             
-			if self.opt["export_frontYtoX"]:
+			if self.opt["export_jedi"]:
 				# change the 'front' from Y+ to X+
 				self.bone_mat_front_Y_to_X(matrix_local_parent)
 				self.bone_mat_front_Y_to_X(matrix_local)
 				
 			mat_transform = matrix_local_parent.inverted() @ matrix_local
-            
+			
+			if self.opt["export_jedi"] and self.opt["export_facefix"]:
+				# need to be compatible with Ravensoft's XSI 3 files, so
+				# must apply face bone scaling of '1.087000' to match theirs...
+				if bone.parent.name == "face":
+					# change the scale for the child bones of 'face'
+					mat_transform @= Matrix.Scale(1.087000, 4)
+			
             # DEBUGGING ONLY
 			#print("Matrix, relative to bone parent -")
             #
@@ -460,7 +467,7 @@ class Save:
 			matrix_local = Matrix()
 			matrix_local @= Matrix(bone.matrix_local)
 			
-			if self.opt["export_frontYtoX"]:
+			if self.opt["export_jedi"]:
 				# change the 'front' from Y+ to X+
 				self.bone_mat_front_Y_to_X(matrix_local)
 			
@@ -471,7 +478,7 @@ class Save:
 			#print("Matrix, relative to armature object -")
 			#
 			
-		if self.opt["export_frontYtoX"]:
+		if self.opt["export_jedi"]:
             # convert the matrix to 'xsi style'
 			self.matrix_to_xsi(mat_transform)
 			
@@ -546,24 +553,31 @@ class Save:
 					matrix_local = Matrix()
 					matrix_local @= Matrix(posebone.matrix)
                     
-					if self.opt["export_frontYtoX"]:
+					if self.opt["export_jedi"]:
 						# change the 'front' from Y+ to X+
 						self.bone_mat_front_Y_to_X(matrix_local_parent)
 						self.bone_mat_front_Y_to_X(matrix_local)
 					
 					mat_posebone = matrix_local_parent.inverted() @ matrix_local
 					
+					if self.opt["export_jedi"] and self.opt["export_facefix"]:
+						# need to be compatible with Ravensoft's XSI 3 files, so
+						# must apply face bone scaling of '1.087000' to match theirs...
+						if posebone.parent.name == "face":
+							# change the scale for the child bones of 'face'
+							mat_posebone @= Matrix.Scale(1.087000, 4)
+					
 				else:
 					matrix_local = Matrix()
 					matrix_local @= Matrix(posebone.matrix)
 					
-					if self.opt["export_frontYtoX"]:
+					if self.opt["export_jedi"]:
 						# change the 'front' from Y+ to X+
 						self.bone_mat_front_Y_to_X(matrix_local)
 					
 					mat_posebone = matrix_local
 				
-				if self.opt["export_frontYtoX"]:
+				if self.opt["export_jedi"]:
 					# convert the matrix to 'xsi style'
 					self.matrix_to_xsi(mat_posebone)
 				
